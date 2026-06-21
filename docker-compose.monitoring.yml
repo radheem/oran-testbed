@@ -1,0 +1,77 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Monitoring — Telegraf (scrapes gNB metrics WS) + InfluxDB 3 + Grafana.
+# Attaches to the external `metrics` bridge shared with the gNB, RIC xApp and
+# multi_ue. Grafana published on host :3300.
+#
+# WS_URL (monitoring/.env) must point at the gNB metrics socket — default
+# 172.19.1.3:8001 (gNB on the metrics bridge).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  telegraf:
+    container_name: telegraf
+    image: cudu/telegraf:local
+    build:
+      context: monitoring/telegraf
+    depends_on:
+      influxdb:
+        condition: service_healthy
+    env_file:
+      - monitoring/.env
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    networks:
+      metrics:
+        ipv4_address: 172.19.1.4
+
+  influxdb:
+    container_name: influxdb
+    image: influxdb:${INFLUXDB3_VERSION}
+    user: "0:0"
+    volumes:
+      - influxdb-storage:/var/lib/influxdb3:rw
+    env_file:
+      - monitoring/.env
+    environment:
+      - LOG_FILTER=${INFLUXDB3_LOG_LEVEL}
+    command: >
+      --object-store=memory --data-dir=/var/lib/influxdb3 --plugin-dir=/var/lib/influxdb3-plugins --node-id="${INFLUXDB_NODE_ID:-node0}" --http-bind="${INFLUXDB3_HTTP_BIND_ADDR}" --without-auth
+    restart: on-failure:10
+    healthcheck:
+      test: >
+        curl -f ${INFLUXDB3_HOST_URL}/health
+      timeout: 5s
+      interval: 1s
+    networks:
+      metrics:
+        ipv4_address: 172.19.1.5
+
+  grafana:
+    container_name: grafana
+    image: cudu/grafana:local
+    build:
+      context: monitoring/grafana
+      args:
+        GF_VERSION: ${GF_VERSION}
+        LOGO_URL: ${GF_LOGO_URL}
+    volumes:
+      - grafana-storage:/var/lib/grafana:rw
+    env_file:
+      - monitoring/.env
+    depends_on:
+      telegraf:
+        condition: service_started
+    ports:
+      - 3300:${GF_PORT}
+    networks:
+      metrics:
+        ipv4_address: 172.19.1.6
+
+volumes:
+  grafana-storage:
+  influxdb-storage:
+
+networks:
+  metrics:
+    external: true
+    name: metrics

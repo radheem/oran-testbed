@@ -1,0 +1,42 @@
+services:
+  multi_ue:
+    image: ghcr.io/sulaimanalmani/srsranzmq/srsue:v1.1
+    container_name: multi_ue
+    privileged: true
+    networks:
+      # Shared n3 bridge with the gNB; single IP for ALL UEs and the co-located
+      # bridge (UEs are multiplexed by ZMQ port, not by IP). The gNB device_args
+      # rx_port targets this address (10.10.4.237:2001), so no gNB change needed.
+      n3:
+        ipv4_address: ${UE_HOST_IP:-10.10.4.237}
+      # Reach InfluxDB (influxdb:8081) for UE metric export.
+      metrics:
+        ipv4_address: 172.19.1.23
+    cap_add:
+      - NET_ADMIN
+      - SYS_NICE
+      - IPC_LOCK
+    volumes:
+      - ./config:/srsran/config
+    env_file:
+      - .env
+    environment:
+      # InfluxDB export target (matches srsRAN docker .env).
+      - INFLUX_URL=http://influxdb:8081
+      - INFLUX_BUCKET=srsran
+    # Start the bridge + NUM_UES srsUE instances. Set DEBUG_MODE=true to keep
+    # the container idle and start things by hand with start_all.sh.
+    command: >
+      /bin/bash -c "
+      mkdir -p /dev/net && { [ -e /dev/net/tun ] || mknod /dev/net/tun c 10 200; } &&
+      chmod +x /srsran/config/*.sh /srsran/config/*.py 2>/dev/null;
+      if [ \"$${DEBUG_MODE}\" = \"true\" ]; then sleep infinity;
+      else /srsran/config/start_all.sh \"$${NUM_UES}\"; fi"
+
+networks:
+  n3:
+    external: true
+    name: n3
+  metrics:
+    external: true
+    name: metrics

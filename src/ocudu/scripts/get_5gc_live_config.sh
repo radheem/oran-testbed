@@ -1,0 +1,1 @@
+docker cp open5gs_5gc:/open5gs/open5gs-5gc.yml curr-open5gs.yaml

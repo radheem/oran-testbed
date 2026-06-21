@@ -1,0 +1,48 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Open5GS 5GC — the shared core.
+#
+# Publishes its control/user-plane ports on the HOST so any number of gNBs
+# (local, other compose projects, or remote hosts) can attach:
+#   38412/sctp  N2 / NGAP (AMF)
+#   2152/udp    NG-U GTP-U (UPF)
+#   9999/tcp    WebUI (admin/1423)
+# Local gNBs additionally share the `n2` bridge (NGAP + NG-U flow over it);
+# `default` carries N6 internet egress (UPF MASQUERADE in the entrypoint).
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  5gc:
+    container_name: open5gs_5gc
+    image: ${OPEN5GS_IMAGE:-cudu/open5gs:local}
+    build:
+      context: open5gs
+      target: open5gs
+      args:
+        OS_VERSION: ${OPEN5GS_OS_VERSION:-22.04}
+        OPEN5GS_VERSION: ${OPEN5GS_VERSION:-v2.7.6}
+    env_file:
+      - open5gs/open5gs.env
+    privileged: true
+    ports:
+      - "9999:9999/tcp"
+      - "38412:38412/sctp"
+      - "2152:2152/udp"
+    command: 5gc -c open5gs-5gc.yml
+    volumes:
+      # Templated config (${VARS}) -> entrypoint envsubst -> open5gs-5gc.yml.
+      - ./open5gs/open5gs-5gc.template.yml:/open5gs/open5gs-5gc.yml.in:ro
+      - ./open5gs/subscriber_db.csv:/open5gs/subscriber_db.csv:ro
+    healthcheck:
+      test: ["CMD-SHELL", "nc -z 127.0.0.20 7777"]
+      interval: 3s
+      timeout: 1s
+      retries: 60
+    networks:
+      n2:
+        ipv4_address: ${OPEN5GS_IP:-10.53.1.2}
+      default:
+
+networks:
+  n2:
+    external: true
+    name: n2

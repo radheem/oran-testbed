@@ -1,0 +1,29 @@
+# SPDX-FileCopyrightText: Copyright (C) 2021-2026 Software Radio Systems Limited
+# SPDX-License-Identifier: BSD-3-Clause-Open-MPI
+
+# Compose-time overlay merged on top of gnb_zmq.yml (second -c argument).
+# Singular addr/bind_addr to match the srsRAN-build gNB image (rptestbed/gnb).
+
+cu_cp:
+  amf:
+    addr: 10.53.1.2
+    bind_addr: 10.53.1.3
+
+metrics:
+  autostart_stdout_metrics: true
+  enable_json: true
+  periodicity:
+    du_report_period: 1000
+    cu_up_report_period: 1000
+    cu_cp_report_period: 1000
+  layers:
+    enable_ru: false
+    enable_sched: true
+    enable_rlc: true
+    enable_mac: true
+    enable_pdcp: false
+    enable_du_low: false
+
+remote_control:
+  bind_addr: 0.0.0.0
+  enabled: true

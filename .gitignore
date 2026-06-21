@@ -1,0 +1,14 @@
+# Python caches
+**/__pycache__/
+*.pyc
+
+# Runtime logs / captures (gNB, UE, RIC)
+*.log
+*.pcap
+gnb-storage/
+gnb2-storage/
+
+# Editor / OS
+.vscode/
+.idea/
+.DS_Store

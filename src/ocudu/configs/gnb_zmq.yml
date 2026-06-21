@@ -1,0 +1,92 @@
+# SPDX-FileCopyrightText: Copyright (C) 2021-2026 Software Radio Systems Limited
+# SPDX-License-Identifier: BSD-3-Clause-Open-MPI
+
+# Single-cell ZMQ gNB configuration for the external UE bridge deployment.
+# Imported from the srsRAN-docker gnb-zmq-single-cell setup; amf addr keys
+# adapted to the OCUDU schema (addrs/bind_addrs).
+#
+# Matches the multi_ue bridge defaults:
+#   gNB N3 IP     : 10.10.3.231   (gnb on the n3 network)
+#   UE bridge IP  : 10.10.4.237   (multi_ue on ue_n3, UE_HOST_IP)
+#   gNB tx/rx port: 2000/2001
+#
+# Single-cell standalone deployment: PCI 1, offers slice sst=1, serves all UEs.
+# No second cell and no RIC — E2 is disabled below (see the `e2` block).
+
+gnb_id: 1
+ran_node_name: gnb01
+
+cu_cp:
+  amf:
+    addrs: 10.53.1.2
+    port: 38412
+    bind_addrs: 10.53.1.3
+    supported_tracking_areas:
+      - tac: 7
+        plmn_list:
+          - plmn: "00101"
+            tai_slice_support_list:
+              - sst: 1
+  inactivity_timer: 7200
+
+ru_sdr:
+  # Use ZMQ RF frontend.
+  device_driver: zmq
+  # gNB TX -> multi_ue bridge RX, and gNB RX <- bridge TX.
+  # Route gNB ZMQ RF streams to the bridge defaults (gNB side ports 2000/2001).
+  device_args: tx_port=tcp://10.10.3.231:2000,rx_port=tcp://10.10.4.237:2001,base_srate=23.04e6
+  srate: 23.04
+  # ZMQ has no real RF: the OCUDU build requires gain <= 0.0 dB for the zmq device.
+  tx_gain: 0
+  rx_gain: 0
+
+cell_cfg:
+  pci: 1
+  dl_arfcn: 368500
+  band: 3      # must match rat.nr.band in ue config
+  channel_bandwidth_MHz: 20
+  common_scs: 15   #  106 x 12 x 15kHz
+  plmn: "00101"
+  tac: 7
+  # Single cell offers slice sst=1.
+  slicing:
+    - sst: 1
+  pdcch:
+    dedicated:
+      ss2_type: common
+      dci_format_0_1_and_1_1: false
+    common:
+      ss0_index: 0
+      coreset0_index: 12
+  prach:
+    prach_config_index: 1
+    total_nof_ra_preambles: 64
+  pdsch:
+    mcs_table: qam64
+  pusch:
+    mcs_table: qam64
+
+log:
+  filename: /tmp/gnb.log
+  all_level: info
+
+pcap:
+  mac_enable: false                 # Set to true to enable MAC-layer PCAPs.
+  mac_filename: /tmp/gnb_mac.pcap   # Path where the MAC PCAP is stored.
+  ngap_enable: false                # Set to true to enable NGAP PCAPs.
+  ngap_filename: /tmp/gnb_ngap.pcap # Path where the NGAP PCAP is stored.
+  e2ap_enable: false                # No RIC in single-cell mode; E2AP PCAPs off.
+  e2ap_du_filename: /tmp/gnb_du_e2ap.pcap       # Path where the DU E2AP PCAP is stored.
+  e2ap_cu_cp_filename: /tmp/gnb_cu_cp_e2ap.pcap # Path where the CU-CP E2AP PCAP is stored.
+  e2ap_cu_up_filename: /tmp/gnb_cu_up_e2ap.pcap # Path where the CU-UP E2AP PCAP is stored.
+
+# E2 fully disabled: the single-cell stack does not run the oran-sc-ric RIC, and
+# this gNB is not attached to the oran-sc-ric network. (Re-enable + re-attach the
+# network in docker-compose.zmq.yml if you add a RIC.)
+e2:
+  enable_du_e2: false
+  enable_cu_cp_e2: false
+  enable_cu_up_e2: false
+  e2sm_kpm_enabled: false
+  e2sm_rc_enabled: false
+  e2sm_ccc_enabled: false

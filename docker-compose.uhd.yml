@@ -1,0 +1,51 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# gNB — UHD (physical USRP B210). Docker-network only: publishes NO host ports.
+#
+#   n2          -> NGAP + NG-U GTP-U to the 5GC
+#   oran-sc-ric -> E2 to the RIC
+#   metrics     -> telemetry
+#
+# RF is the host SDR over USB (no n3/ZMQ wire, no multi_ue). The UE is a real
+# handset: provision its IMSI/SD in the WebUI (:9999) and select the test PLMN.
+# Run host perf tuning before bring-up (see docs/SETUP.md): the SDR needs
+# low-latency scheduling. Pin MARCH at image build time to <= the host CPU.
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  gnb:
+    container_name: ocudu_gnb
+    image: ${GNB_IMAGE:-rptestbed/gnb:20260610-dpdk}
+    pull_policy: if_not_present
+    privileged: true
+    cap_add:
+      - SYS_NICE
+      - CAP_SYS_PTRACE
+    volumes:
+      # Access the USRP over USB + UHD FPGA images from the host.
+      - /dev/bus/usb/:/dev/bus/usb/
+      - /usr/share/uhd/images:/usr/share/uhd/images
+      - ./configs/gnb_uhd.yml:/gnb_config.yml:ro
+      - ./configs/gnb_uhd_compose_config.yml:/gnb_compose_config.yml:ro
+      - gnb-storage:/tmp
+    command: gnb -c /gnb_config.yml -c /gnb_compose_config.yml
+    networks:
+      n2:
+        ipv4_address: ${GNB_N2_IP:-10.53.1.3}
+      oran-sc-ric:
+        ipv4_address: ${GNB_RIC_IP:-10.0.2.25}
+      metrics:
+        ipv4_address: ${GNB_METRICS_IP:-172.19.1.3}
+
+volumes:
+  gnb-storage:
+
+networks:
+  n2:
+    external: true
+    name: n2
+  oran-sc-ric:
+    external: true
+    name: oran-sc-ric
+  metrics:
+    external: true
+    name: metrics

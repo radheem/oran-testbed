@@ -1,0 +1,137 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# Metrics pub/sub pipeline: Kafka broker + MongoDB + consumer.
+#
+# xApps publish JSON metric messages to Kafka (topic xapp-metrics). The consumer
+# reads them and writes to BOTH InfluxDB (bucket srsran, so Grafana keeps
+# working) and MongoDB. All on the shared external `metrics` bridge.
+#
+#   kafka            172.19.1.7   (KRaft single-node; :9092 in-net, :29092 host)
+#   metrics_mongo    172.19.1.8   (:27017)
+#   metrics_consumer 172.19.1.9
+# ─────────────────────────────────────────────────────────────────────────────
+
+services:
+  kafka:
+    container_name: kafka
+    image: apache/kafka:3.7.2
+    environment:
+      KAFKA_NODE_ID: "1"
+      KAFKA_PROCESS_ROLES: "broker,controller"
+      KAFKA_CONTROLLER_QUORUM_VOTERS: "1@kafka:9093"
+      KAFKA_LISTENERS: "PLAINTEXT://0.0.0.0:9092,CONTROLLER://0.0.0.0:9093,EXTERNAL://0.0.0.0:29092"
+      KAFKA_ADVERTISED_LISTENERS: "PLAINTEXT://kafka:9092,EXTERNAL://localhost:29092"
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: "PLAINTEXT:PLAINTEXT,CONTROLLER:PLAINTEXT,EXTERNAL:PLAINTEXT"
+      KAFKA_INTER_BROKER_LISTENER_NAME: "PLAINTEXT"
+      KAFKA_CONTROLLER_LISTENER_NAMES: "CONTROLLER"
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_REPLICATION_FACTOR: "1"
+      KAFKA_TRANSACTION_STATE_LOG_MIN_ISR: "1"
+      KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: "0"
+      KAFKA_NUM_PARTITIONS: "1"
+      # Fixed cluster id — must stay constant once kafka-data is formatted.
+      CLUSTER_ID: "MkU3OEVBNTcwNTJENDM2Qk"
+    ports:
+      - "29092:29092"   # optional host access (remove if not needed)
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    healthcheck:
+      # The check launches a JVM, so it needs a generous timeout (a 5s timeout
+      # never passes and the broker is wrongly marked unhealthy).
+      test: ["CMD-SHELL", "/opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 >/dev/null 2>&1 || exit 1"]
+      interval: 15s
+      timeout: 20s
+      retries: 15
+      start_period: 30s
+    restart: unless-stopped
+    networks:
+      metrics:
+        ipv4_address: 172.19.1.7
+
+  mongo:
+    container_name: metrics_mongo
+    image: mongo:7.0
+    # No auth, matching the no-auth InfluxDB testbed. For auth, set
+    # MONGO_INITDB_ROOT_USERNAME/PASSWORD and update the consumer MONGO_URI.
+    ports:
+      - "27017:27017"   # optional host access
+    volumes:
+      - metrics-mongo-data:/data/db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping')"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+    restart: unless-stopped
+    networks:
+      metrics:
+        ipv4_address: 172.19.1.8
+
+  # InfluxDB 2.7.5 — same version the O-RAN AIMLFW uses. Auto-setup creates a
+  # NEW bucket in org `primary`; the consumer pushes the KPM data as-is here so
+  # the AIMLFW (pointed at this instance / token / org) can consume it.
+  influxdb2:
+    container_name: influxdb2
+    image: influxdb:2.7.5
+    environment:
+      DOCKER_INFLUXDB_INIT_MODE: setup
+      DOCKER_INFLUXDB_INIT_USERNAME: ${INFLUX2_USER:-admin}
+      DOCKER_INFLUXDB_INIT_PASSWORD: ${INFLUX2_PASSWORD:-admin12345}
+      DOCKER_INFLUXDB_INIT_ORG: ${INFLUX2_ORG:-primary}
+      DOCKER_INFLUXDB_INIT_BUCKET: ${INFLUX2_BUCKET:-srsran}
+      DOCKER_INFLUXDB_INIT_ADMIN_TOKEN: ${INFLUX2_TOKEN:-yVd3kfodr60RZGMYHnY1}
+    ports:
+      - "8086:8086"
+    volumes:
+      - influxdb2-data:/var/lib/influxdb2
+    healthcheck:
+      test: ["CMD", "influx", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 30
+      start_period: 10s
+    restart: unless-stopped
+    networks:
+      metrics:
+        ipv4_address: 172.19.1.10
+
+  metrics_consumer:
+    container_name: metrics_consumer
+    image: cudu/metrics-consumer:local
+    build:
+      context: ./pubsub/consumer
+    depends_on:
+      kafka:
+        condition: service_healthy
+      mongo:
+        condition: service_healthy
+      influxdb2:
+        condition: service_healthy
+    environment:
+      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+      KAFKA_TOPIC: "xapp-metrics"
+      KAFKA_GROUP_ID: "metrics-consumer"
+      INFLUX_URL: "http://influxdb:8081"
+      INFLUX_BUCKET: "srsran"
+      MONGO_URI: "mongodb://metrics_mongo:27017"
+      MONGO_DB: "metrics"
+      # InfluxDB 2 sink (AIMLFW-compatible).
+      INFLUX2_ENABLE: "1"
+      INFLUX2_URL: "http://influxdb2:8086"
+      INFLUX2_ORG: "${INFLUX2_ORG:-primary}"
+      INFLUX2_BUCKET: "${INFLUX2_BUCKET:-srsran}"
+      INFLUX2_TOKEN: "${INFLUX2_TOKEN:-yVd3kfodr60RZGMYHnY1}"
+    restart: unless-stopped
+    networks:
+      metrics:
+        ipv4_address: 172.19.1.9
+
+volumes:
+  kafka-data:
+  metrics-mongo-data:
+  influxdb2-data:
+
+networks:
+  metrics:
+    external: true
+    name: metrics

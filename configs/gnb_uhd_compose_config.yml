@@ -1,0 +1,27 @@
+# Compose-time overlay merged on top of gnb_uhd.yml (second -c argument).
+# Mirrors gnb_zmq_compose_config.yml: re-asserts the AMF binding and enables
+# stdout/JSON metrics + the remote-control socket for telemetry.
+
+cu_cp:
+  amf:
+    addrs: 10.53.1.2
+    bind_addrs: 10.53.1.3
+
+metrics:
+  autostart_stdout_metrics: true
+  enable_json: true
+  periodicity:
+    du_report_period: 1000
+    cu_up_report_period: 1000
+    cu_cp_report_period: 1000
+  layers:
+    enable_ru: false
+    enable_sched: true
+    enable_rlc: true
+    enable_mac: true
+    enable_pdcp: false
+    enable_du_low: false
+
+remote_control:
+  bind_addr: 0.0.0.0
+  enabled: true
