@@ -27,6 +27,7 @@ import json
 import logging
 import os
 import time
+from datetime import datetime, timezone
 
 from kafka import KafkaConsumer
 from pymongo import MongoClient
@@ -113,6 +114,13 @@ def main():
             # 2) MongoDB: collection per measurement + ingest timestamp.
             doc = dict(m)
             doc["ingested_at_ns"] = time.time_ns()
+            # createdon: the xApp's created-at (message timestamp_ns) as a UTC
+            # string, falling back to now (UTC) if the message carries none.
+            if ts_ns:
+                doc["createdon"] = datetime.fromtimestamp(
+                    int(ts_ns) / 1e9, tz=timezone.utc).isoformat()
+            else:
+                doc["createdon"] = datetime.now(timezone.utc).isoformat()
             mongo[meas].insert_one(doc)
 
             n += 1
