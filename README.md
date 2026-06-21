@@ -72,10 +72,12 @@ docker build -f src/ocudu/docker/Dockerfile \
 > newer host than the testbed.
 
 ## Metrics pub/sub pipeline
-xApps publish KPM to **Kafka** (`xapp-metrics`); a **consumer** fans each message to
-**InfluxDB 3** (`srsran/kpm`), **MongoDB** (`metrics.kpm`) and **InfluxDB 2**
-(`primary/srsran`, AIMLFW-compatible, port 8086). Start with
-`./scripts/manage.sh start pubsub`. See `docker-compose.pubsub.yml` and `pubsub/`.
+xApps publish KPM to **Kafka** (`xapp-metrics`); **three independent consumers** (one image,
+pluggable sink, each its own Kafka group + DB params) fan it out:
+`consumer_influx3` → **InfluxDB 3** (`srsran/kpm`, Grafana), `consumer_mongo` → **MongoDB**
+(`metrics.kpm`, non-RT RIC rApp), `consumer_influx2` → **InfluxDB 2** (`primary/srsran`,
+AIMLFW-compatible, port 8086). Start with `./scripts/manage.sh start pubsub`.
+See `docker-compose.pubsub.yml`, `pubsub/consumer/` and [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Quickstart (ZMQ end-to-end)
 
@@ -88,6 +90,7 @@ xApps publish KPM to **Kafka** (`xapp-metrics`); a **consumer** fans each messag
 ./scripts/manage.sh start multi_ue     # NUM_UES=1
 ```
 
+Complete architecture with mermaid diagrams: **[docs/ARCHITECTURE.md](docs/ARCHITECTURE.md)**.
 Full procedure, gates and troubleshooting: **[docs/RUNBOOK_E2E_ZMQ.md](docs/RUNBOOK_E2E_ZMQ.md)**.
 Per-component detail and the UHD flow: **[docs/SETUP.md](docs/SETUP.md)**.
 

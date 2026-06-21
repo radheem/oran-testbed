@@ -1,14 +1,27 @@
 # ─────────────────────────────────────────────────────────────────────────────
-# Metrics pub/sub pipeline: Kafka broker + MongoDB + consumer.
+# Metrics pub/sub pipeline: Kafka broker + datastores + THREE consumers.
 #
-# xApps publish JSON metric messages to Kafka (topic xapp-metrics). The consumer
-# reads them and writes to BOTH InfluxDB (bucket srsran, so Grafana keeps
-# working) and MongoDB. All on the shared external `metrics` bridge.
-#
-#   kafka            172.19.1.7   (KRaft single-node; :9092 in-net, :29092 host)
-#   metrics_mongo    172.19.1.8   (:27017)
-#   metrics_consumer 172.19.1.9
+# xApps publish JSON metric messages to Kafka (topic xapp-metrics). Three
+# independent consumers (same image, different SINK + subscription + DB params,
+# each its own Kafka group) fan the stream out:
+#   consumer_influx3 172.19.1.9   SINK=influx -> InfluxDB 3 (Grafana)
+#   consumer_influx2 172.19.1.11  SINK=influx -> InfluxDB 2 (O-RAN AIMLFW)
+#   consumer_mongo   172.19.1.12  SINK=mongo  -> MongoDB    (non-RT RIC rApp)
+# Infra: kafka 172.19.1.7, metrics_mongo .8, influxdb2 .10. All on `metrics`.
+# Add a consumer = copy a service block + change SINK/group/DB params.
 # ─────────────────────────────────────────────────────────────────────────────
+
+# Shared consumer definition (image/build/restart + base subscription env).
+x-consumer: &consumer
+  image: cudu/metrics-consumer:local
+  build:
+    context: ./pubsub/consumer
+  restart: unless-stopped
+
+x-consumer-env: &consumer-env
+  KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
+  KAFKA_TOPIC: "xapp-metrics"
+  KAFKA_OFFSET_RESET: "latest"
 
 services:
   kafka:
@@ -95,36 +108,63 @@ services:
       metrics:
         ipv4_address: 172.19.1.10
 
-  metrics_consumer:
-    container_name: metrics_consumer
-    image: cudu/metrics-consumer:local
-    build:
-      context: ./pubsub/consumer
+  # Consumer 1: InfluxDB 3 -> Grafana
+  consumer_influx3:
+    <<: *consumer
+    container_name: consumer_influx3
+    depends_on:
+      kafka:
+        condition: service_healthy
+    environment:
+      <<: *consumer-env
+      SINK: "influx"
+      KAFKA_GROUP_ID: "${INFLUX3_GROUP:-cons-influx3}"
+      INFLUX_URL: "${INFLUX3_URL:-http://influxdb:8081}"
+      INFLUX_BUCKET: "${INFLUX3_BUCKET:-srsran}"
+    networks:
+      metrics:
+        ipv4_address: 172.19.1.9
+
+  # Consumer 2: InfluxDB 2 -> O-RAN AI/ML Framework
+  consumer_influx2:
+    <<: *consumer
+    container_name: consumer_influx2
+    depends_on:
+      kafka:
+        condition: service_healthy
+      influxdb2:
+        condition: service_healthy
+    environment:
+      <<: *consumer-env
+      SINK: "influx"
+      KAFKA_GROUP_ID: "${INFLUX2_GROUP:-cons-influx2}"
+      INFLUX_URL: "${INFLUX2_URL:-http://influxdb2:8086}"
+      INFLUX_BUCKET: "${INFLUX2_BUCKET:-srsran}"
+      INFLUX_ORG: "${INFLUX2_ORG:-primary}"
+      INFLUX_TOKEN: "${INFLUX2_TOKEN:-yVd3kfodr60RZGMYHnY1}"
+    networks:
+      metrics:
+        ipv4_address: 172.19.1.11
+
+  # Consumer 3: MongoDB -> non-RT RIC rApp
+  consumer_mongo:
+    <<: *consumer
+    container_name: consumer_mongo
     depends_on:
       kafka:
         condition: service_healthy
       mongo:
         condition: service_healthy
-      influxdb2:
-        condition: service_healthy
     environment:
-      KAFKA_BOOTSTRAP_SERVERS: "kafka:9092"
-      KAFKA_TOPIC: "xapp-metrics"
-      KAFKA_GROUP_ID: "metrics-consumer"
-      INFLUX_URL: "http://influxdb:8081"
-      INFLUX_BUCKET: "srsran"
-      MONGO_URI: "mongodb://metrics_mongo:27017"
-      MONGO_DB: "metrics"
-      # InfluxDB 2 sink (AIMLFW-compatible).
-      INFLUX2_ENABLE: "1"
-      INFLUX2_URL: "http://influxdb2:8086"
-      INFLUX2_ORG: "${INFLUX2_ORG:-primary}"
-      INFLUX2_BUCKET: "${INFLUX2_BUCKET:-srsran}"
-      INFLUX2_TOKEN: "${INFLUX2_TOKEN:-yVd3kfodr60RZGMYHnY1}"
-    restart: unless-stopped
+      <<: *consumer-env
+      SINK: "mongo"
+      KAFKA_GROUP_ID: "${MONGO_GROUP:-cons-mongo}"
+      MONGO_URI: "${MONGO_URI:-mongodb://metrics_mongo:27017}"
+      MONGO_DB: "${MONGO_DB:-metrics}"
+      MONGO_TIMEOUT_MS: "${MONGO_TIMEOUT_MS:-2000}"
     networks:
       metrics:
-        ipv4_address: 172.19.1.9
+        ipv4_address: 172.19.1.12
 
 volumes:
   kafka-data:

@@ -99,17 +99,24 @@ second gNB.
 
 ## 6b. Metrics pub/sub pipeline
 ```bash
-./scripts/manage.sh start pubsub     # kafka + mongo + influxdb2 + consumer
+./scripts/manage.sh start pubsub     # kafka + mongo + influxdb2 + 3 consumers
 ```
 xApps publish KPM to Kafka topic `xapp-metrics` (via `lib/metrics_publisher.py`,
-selected by `METRICS_BACKEND=kafka`). The consumer (`pubsub/consumer/`) fans each
-message to three sinks:
-- **InfluxDB 3** — `srsran/kpm` (Grafana / existing path)
-- **MongoDB** — `metrics.kpm` (full document + `ingested_at_ns`)
-- **InfluxDB 2** — `primary/srsran` measurement `kpm`, **port 8086**, token
+selected by `METRICS_BACKEND=kafka`). **Three independent consumers** (same image,
+own `SINK` + Kafka group + DB params; `pubsub/consumer/` with `consumer.py` +
+`sinks.py`) each read the topic and write one datastore:
+- `consumer_influx3` → **InfluxDB 3** `srsran/kpm` (Grafana / existing path)
+- `consumer_mongo` → **MongoDB** `metrics.kpm` (full document + `ingested_at_ns` + `createdon`)
+- `consumer_influx2` → **InfluxDB 2** `primary/srsran` measurement `kpm`, **port 8086**, token
   `yVd3kfodr60RZGMYHnY1` — same InfluxDB version the O-RAN AIMLFW uses, written
   as-is so the AIMLFW can consume it (point a feature group at bucket `srsran`,
   measurement `kpm`, fields `DRB_UEThpDl`/`DRB_UEThpUl`).
+
+Each consumer is configured per-service in `docker-compose.pubsub.yml`
+(subscription: `KAFKA_BOOTSTRAP_SERVERS`/`KAFKA_TOPIC`/`KAFKA_GROUP_ID`/`KAFKA_OFFSET_RESET`;
+output: `SINK` + the sink's DB env). Add a consumer = copy a service block or add a sink class
+in `sinks.py`. Since each consumer uses a distinct Kafka **group**, they receive the stream
+independently — run only the ones you need.
 
 Verify (after the ZMQ e2e is up and the KPM xApp is running):
 ```bash
