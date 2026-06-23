@@ -18,8 +18,8 @@ cu_cp:
           - plmn: "00101"
             tai_slice_support_list:
               - sst: 1
-              # For a handset that requests a custom SD (e.g. 0x111111), add `sd:`
-              # here AND on the subscriber in the WebUI (:9999). See docs/SETUP.md.
+                sd: 1118481   # 0x111111 — must match cell_cfg.slicing, the core
+                              # (open5gs sd: 111111) and the subscriber (update_slice.sh).
   inactivity_timer: 7200
 
 ru_sdr:
@@ -41,6 +41,7 @@ cell_cfg:
   pci: 1
   slicing:
     - sst: 1
+      sd: 1118481   # 0x111111
 
 log:
   filename: /tmp/gnb.log

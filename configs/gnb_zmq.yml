@@ -29,6 +29,7 @@ cu_cp:
           - plmn: "00101"
             tai_slice_support_list:
               - sst: 1
+                sd: 1118481   # 0x111111
   inactivity_timer: 7200
 
 ru_sdr:
@@ -50,9 +51,10 @@ cell_cfg:
   common_scs: 15   #  106 x 12 x 15kHz
   plmn: "00101"
   tac: 7
-  # Single cell offers slice sst=1.
+  # Single cell offers slice sst=1, sd=0x111111.
   slicing:
     - sst: 1
+      sd: 1118481   # 0x111111
   pdcch:
     dedicated:
       ss2_type: common

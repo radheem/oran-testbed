@@ -76,9 +76,13 @@ scheduling), then:
 # .env -> DEPLOY_TYPE=uhd
 ./scripts/manage.sh start gnb
 ```
-Handset with a custom slice SD (e.g. `0x111111`): add `sd:` under both
-`cell_cfg.slicing` / `tai_slice_support_list` in `configs/gnb_uhd.yml` **and** on
-the subscriber in the WebUI, else the AMF won't authorize it.
+Slice is **SST=1, SD=0x111111** by default across the stack — the gNB
+(`cell_cfg.slicing` / `tai_slice_support_list` in `configs/gnb_uhd.yml`, as decimal
+`sd: 1118481`), the core (`open5gs/open5gs-5gc.template.yml`, as hex `sd: 111111`),
+and every subscriber. The gNB and core must agree, **and** each subscriber must carry
+the same slice or the AMF won't authorize it — apply it with
+`./scripts/update_slice.sh 1 111111` after subscribers are provisioned (or set it per
+subscriber in the WebUI). To change the slice, update all three together.
 
 ## 5. UE — multi_ue (ZMQ)
 `ue/multi_ue` runs N srsUEs in one container sharing `10.10.4.237`, multiplexed
