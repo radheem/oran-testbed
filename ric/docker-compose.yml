@@ -160,6 +160,10 @@ services:
     networks:
       ric_network:
         ipv4_address: ${E2MGR_IP:-10.0.2.11}
+    ulimits:
+      nofile:
+        soft: 65536
+        hard: 65536
 
   python_xapp_runner:
     container_name: python_xapp_runner
