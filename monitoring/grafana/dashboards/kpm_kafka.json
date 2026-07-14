@@ -1,0 +1,138 @@
+{
+  "annotations": {
+    "list": [
+      {
+        "builtIn": 1,
+        "datasource": {
+          "type": "grafana",
+          "uid": "-- Grafana --"
+        },
+        "enable": true,
+        "hide": true,
+        "iconColor": "rgba(0, 211, 255, 1)",
+        "name": "Annotations & Alerts",
+        "type": "dashboard"
+      }
+    ]
+  },
+  "description": "Kafka-fed KPM metrics published by the xApp path and written to InfluxDB by the consumer.",
+  "editable": true,
+  "fiscalYearStartMonth": 0,
+  "graphTooltip": 1,
+  "links": [],
+  "liveNow": false,
+  "panels": [
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 0},
+      "id": 1,
+      "panels": [],
+      "title": "Throughput",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"},
+      "description": "DL throughput per UE from the Kafka-fed KPM measurement.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "spanNulls": true}, "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 1},
+      "id": 2,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"}, "editorMode": "code", "format": "time_series", "rawQuery": true, "rawSql": "SELECT time, ue_id, \"DRB_UEThpDl\" FROM kpm WHERE time >= $__timeFrom AND time <= $__timeTo AND \"DRB_UEThpDl\" IS NOT NULL ORDER BY time", "refId": "A"}],
+      "title": "DL Throughput per UE (DRB_UEThpDl)",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"},
+      "description": "UL throughput per UE from the Kafka-fed KPM measurement.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "spanNulls": true}, "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 1},
+      "id": 3,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"}, "editorMode": "code", "format": "time_series", "rawQuery": true, "rawSql": "SELECT time, ue_id, \"DRB_UEThpUl\" FROM kpm WHERE time >= $__timeFrom AND time <= $__timeTo AND \"DRB_UEThpUl\" IS NOT NULL ORDER BY time", "refId": "A"}],
+      "title": "UL Throughput per UE (DRB_UEThpUl)",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 9},
+      "id": 4,
+      "panels": [],
+      "title": "Resource Usage",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"},
+      "description": "DL PRBs used per UE.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "spanNulls": true}, "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 0, "y": 10},
+      "id": 5,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"}, "editorMode": "code", "format": "time_series", "rawQuery": true, "rawSql": "SELECT time, ue_id, \"RRU_PrbUsedDl\" FROM kpm WHERE time >= $__timeFrom AND time <= $__timeTo AND \"RRU_PrbUsedDl\" IS NOT NULL ORDER BY time", "refId": "A"}],
+      "title": "DL PRBs Used per UE",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"},
+      "description": "UL PRBs used per UE.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "spanNulls": true}, "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 12, "x": 12, "y": 10},
+      "id": 6,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"}, "editorMode": "code", "format": "time_series", "rawQuery": true, "rawSql": "SELECT time, ue_id, \"RRU_PrbUsedUl\" FROM kpm WHERE time >= $__timeFrom AND time <= $__timeTo AND \"RRU_PrbUsedUl\" IS NOT NULL ORDER BY time", "refId": "A"}],
+      "title": "UL PRBs Used per UE",
+      "type": "timeseries"
+    },
+    {
+      "collapsed": false,
+      "gridPos": {"h": 1, "w": 24, "x": 0, "y": 18},
+      "id": 7,
+      "panels": [],
+      "title": "Quality",
+      "type": "row"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"},
+      "description": "CQI per UE.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "spanNulls": true}, "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 0, "y": 19},
+      "id": 8,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"}, "editorMode": "code", "format": "time_series", "rawQuery": true, "rawSql": "SELECT time, ue_id, \"CQI\" FROM kpm WHERE time >= $__timeFrom AND time <= $__timeTo AND \"CQI\" IS NOT NULL ORDER BY time", "refId": "A"}],
+      "title": "CQI per UE",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"},
+      "description": "RSRP per UE.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "spanNulls": true}, "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 8, "y": 19},
+      "id": 9,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"}, "editorMode": "code", "format": "time_series", "rawQuery": true, "rawSql": "SELECT time, ue_id, \"RSRP\" FROM kpm WHERE time >= $__timeFrom AND time <= $__timeTo AND \"RSRP\" IS NOT NULL ORDER BY time", "refId": "A"}],
+      "title": "RSRP per UE",
+      "type": "timeseries"
+    },
+    {
+      "datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"},
+      "description": "RSRQ per UE.",
+      "fieldConfig": {"defaults": {"color": {"mode": "palette-classic"}, "custom": {"drawStyle": "line", "fillOpacity": 10, "lineWidth": 2, "showPoints": "never", "spanNulls": true}, "min": 0}, "overrides": []},
+      "gridPos": {"h": 8, "w": 8, "x": 16, "y": 19},
+      "id": 10,
+      "options": {"legend": {"displayMode": "table", "placement": "bottom", "showLegend": true}, "tooltip": {"mode": "multi", "sort": "desc"}},
+      "targets": [{"datasource": {"type": "influxdb", "uid": "JOSE3g9KVz"}, "editorMode": "code", "format": "time_series", "rawQuery": true, "rawSql": "SELECT time, ue_id, \"RSRQ\" FROM kpm WHERE time >= $__timeFrom AND time <= $__timeTo AND \"RSRQ\" IS NOT NULL ORDER BY time", "refId": "A"}],
+      "title": "RSRQ per UE",
+      "type": "timeseries"
+    }
+  ],
+  "refresh": "5s",
+  "schemaVersion": 39,
+  "tags": ["kafka", "kpm", "xapp"],
+  "templating": {"list": []},
+  "time": {"from": "now-15m", "to": "now"},
+  "timepicker": {},
+  "timezone": "browser",
+  "title": "KPM over Kafka",
+  "uid": "kpmkafka",
+  "version": 1,
+  "weekStart": ""
+}

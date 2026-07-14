@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
 """
-UE traffic + latency runner with InfluxDB export.
+UE traffic + latency runner with Kafka-first metric export.
 
 Runs iperf3 and ping *inside* a UE network namespace, parses iperf 3.7 text
-output live (no --json-stream in 3.7), and pushes metrics to the same InfluxDB 3
-that Grafana reads. Stdlib only; best-effort writes never crash the run.
+output live (no --json-stream in 3.7), and publishes JSON metric messages to
+Kafka. A best-effort InfluxDB fallback preserves local runs if the Kafka client
+or broker is unavailable.
+
+Message schema:
+    {"measurement": str, "tags": {..}, "fields": {..},
+     "timestamp_ns": int, "xapp": str}
 
 Measurements:
-  ue_traffic  tags: ue_id, scenario, proto, role, server
-              fields: throughput_mbps, retransmits, jitter_ms, loss_pct
-  ue_latency  tags: ue_id, target
-              fields: rtt_ms, rtt_min_ms, rtt_avg_ms, rtt_max_ms, rtt_mdev_ms
+    ue_traffic  tags: ue_id, scenario, proto, role, server
+                            fields: throughput_mbps, retransmits, jitter_ms, loss_pct
+    ue_latency  tags: ue_id, target
+                            fields: rtt_ms, rtt_min_ms, rtt_avg_ms, rtt_max_ms, rtt_mdev_ms
 """
 
 import argparse
+import importlib
+import json
 import os
 import re
 import signal
@@ -73,6 +80,74 @@ class Influx:
                 self._warned = True
 
 
+class MetricsPublisher:
+    def __init__(self, enabled, topic, bootstrap_servers, xapp, fallback=None):
+        self.enabled = enabled
+        self.topic = topic
+        self.xapp = xapp
+        self.fallback = fallback
+        self._warned = False
+        self._producer = None
+
+        if not self.enabled:
+            return
+
+        try:
+            kafka_mod = importlib.import_module("kafka")
+            KafkaProducer = kafka_mod.KafkaProducer
+            servers = [srv.strip() for srv in bootstrap_servers.split(",") if srv.strip()]
+            self._producer = KafkaProducer(
+                bootstrap_servers=servers,
+                value_serializer=lambda value: json.dumps(value).encode("utf-8"),
+                acks=1,
+                retries=2,
+                linger_ms=50,
+                request_timeout_ms=3000,
+                max_block_ms=2000,
+            )
+        except Exception as exc:  # noqa: BLE001 - best-effort init
+            self._warn("Kafka producer init failed ({}); using InfluxDB fallback.".format(exc))
+
+    def _warn(self, msg):
+        if not self._warned:
+            print("WARN: {}".format(msg), file=sys.stderr)
+            self._warned = True
+
+    def write(self, measurement, tags, fields, ts_ns=None):
+        if not self.enabled:
+            return
+
+        numeric = {}
+        for k, v in fields.items():
+            try:
+                numeric[k] = float(v)
+            except (TypeError, ValueError):
+                continue
+
+        if not numeric:
+            return
+
+        clean_tags = {k: v for k, v in (tags or {}).items() if v is not None and v != ""}
+        message = {
+            "measurement": measurement,
+            "tags": clean_tags,
+            "fields": numeric,
+            "timestamp_ns": int(ts_ns if ts_ns is not None else time.time_ns()),
+            "xapp": self.xapp,
+        }
+
+        if self._producer is not None:
+            try:
+                self._producer.send(self.topic, message)
+                self._producer.flush(timeout=1)
+                return
+            except Exception as exc:  # noqa: BLE001 - never raise into the run
+                self._warn("Kafka publish failed ({}); falling back to InfluxDB.".format(exc))
+
+        if self.fallback is not None:
+            self.fallback.write(measurement, clean_tags, numeric, ts_ns=message["timestamp_ns"])
+
+
 # ----------------------------- parsing helpers -----------------------------
 _UNIT = {"K": 1e-3, "M": 1.0, "G": 1e3, "k": 1e-3, "m": 1.0, "g": 1e3}
 # [ ID] 0.00-1.00 sec <transfer> <U>Bytes <rate> <U>bits/sec <tail>
@@ -89,7 +164,7 @@ def netns_cmd(ns, argv):
 
 
 # ----------------------------- iperf handling ------------------------------
-def run_iperf(proc_argv, ns, influx, base_tags, parallel):
+def run_iperf(proc_argv, ns, metrics, base_tags, parallel):
     """Spawn iperf3 in the netns; parse output line-by-line; push live."""
     cmd = netns_cmd(ns, proc_argv)
     print("+ " + " ".join(cmd), file=sys.stderr)
@@ -119,11 +194,11 @@ def run_iperf(proc_argv, ns, influx, base_tags, parallel):
             rm = _TCP_RETR.search(line)
             if rm:
                 fields["retransmits"] = rm.group(1)
-            influx.write("ue_traffic", dict(base_tags, kind="summary"), fields, ts)
+            metrics.write("ue_traffic", dict(base_tags, kind="summary"), fields, ts)
             print("  [summary] {:.3f} Mbps {}".format(mbps, tail.strip()),
                   file=sys.stderr)
         else:
-            influx.write("ue_traffic", base_tags, {"throughput_mbps": mbps}, ts)
+            metrics.write("ue_traffic", base_tags, {"throughput_mbps": mbps}, ts)
             print("  {:>6}-{:<6}s  {:.3f} Mbps".format(start, end, mbps),
                   file=sys.stderr)
     proc.stdout.close()
@@ -131,7 +206,7 @@ def run_iperf(proc_argv, ns, influx, base_tags, parallel):
 
 
 # ----------------------------- ping handling -------------------------------
-def run_ping(ns, target, influx, ue_id, stop_evt):
+def run_ping(ns, target, metrics, ue_id, stop_evt):
     cmd = netns_cmd(ns, ["ping", "-i", "1", "-W", "1", target])
     print("+ " + " ".join(cmd), file=sys.stderr)
     try:
@@ -146,11 +221,11 @@ def run_ping(ns, target, influx, ue_id, stop_evt):
             break
         m = _PING_RTT.search(line)
         if m:
-            influx.write("ue_latency", tags, {"rtt_ms": m.group(1)})
+            metrics.write("ue_latency", tags, {"rtt_ms": m.group(1)})
             continue
         s = _PING_SUMMARY.search(line)
         if s:
-            influx.write("ue_latency", tags, {
+            metrics.write("ue_latency", tags, {
                 "rtt_min_ms": s.group(1), "rtt_avg_ms": s.group(2),
                 "rtt_max_ms": s.group(3), "rtt_mdev_ms": s.group(4)})
     try:
@@ -161,7 +236,7 @@ def run_ping(ns, target, influx, ue_id, stop_evt):
 
 # ----------------------------- main ----------------------------------------
 def main():
-    p = argparse.ArgumentParser(description="UE traffic/latency runner + InfluxDB export")
+    p = argparse.ArgumentParser(description="UE traffic/latency runner + Kafka export")
     p.add_argument("--role", required=True, choices=["client", "server"])
     p.add_argument("--ue", default=os.environ.get("UE_NUM", "1"))
     p.add_argument("--scenario", default="custom")
@@ -180,7 +255,10 @@ def main():
     p.add_argument("--latency-only", action="store_true",
                    help="ping only for --duration, no iperf traffic")
     p.add_argument("--no-export", action="store_true")
-    # Influx connection (defaults match the srsRAN docker .env)
+    # Kafka + Influx connection (defaults match the srsRAN docker .env)
+    p.add_argument("--kafka-bootstrap-servers", default=os.environ.get("KAFKA_BOOTSTRAP_SERVERS", "kafka:9092"))
+    p.add_argument("--kafka-topic", default=os.environ.get("KAFKA_TOPIC", "xapp-metrics"))
+    p.add_argument("--xapp-name", default=os.environ.get("XAPP_NAME", "multi_ue"))
     p.add_argument("--influx-url", default=os.environ.get("INFLUX_URL", "http://influxdb:8081"))
     p.add_argument("--influx-bucket", default=os.environ.get("INFLUX_BUCKET", "srsran"))
     p.add_argument("--influx-org", default=os.environ.get("INFLUX_ORG", ""))
@@ -188,8 +266,15 @@ def main():
     args = p.parse_args()
 
     ns = "ue{}".format(args.ue)
-    influx = Influx(not args.no_export, args.influx_url, args.influx_bucket,
-                    args.influx_org, args.influx_token)
+    fallback = Influx(not args.no_export, args.influx_url, args.influx_bucket,
+                      args.influx_org, args.influx_token)
+    metrics = MetricsPublisher(
+        not args.no_export,
+        args.kafka_topic,
+        args.kafka_bootstrap_servers,
+        args.xapp_name,
+        fallback=fallback,
+    )
     base_tags = {"ue_id": args.ue, "scenario": args.scenario,
                  "proto": args.proto, "role": args.role,
                  "server": args.server_ip or ""}
@@ -197,7 +282,7 @@ def main():
     if args.role == "server":
         argv = ["iperf3", "-s", "-p", str(args.port), "-i", "1", "--forceflush"]
         print("Starting iperf3 server in {} (Ctrl+C to stop)".format(ns), file=sys.stderr)
-        return run_iperf(argv, ns, influx, base_tags, parallel=1)
+        return run_iperf(argv, ns, metrics, base_tags, parallel=1)
 
     # client
     if not args.server_ip:
@@ -209,7 +294,7 @@ def main():
         signal.signal(signal.SIGINT, lambda *_: stop_evt.set())
         signal.signal(signal.SIGTERM, lambda *_: stop_evt.set())
         t = threading.Thread(target=run_ping,
-                             args=(ns, args.server_ip, influx, args.ue, stop_evt),
+                             args=(ns, args.server_ip, metrics, args.ue, stop_evt),
                              daemon=True)
         t.start()
         try:
@@ -237,7 +322,7 @@ def main():
     ping_thread = None
     if not args.no_ping:
         ping_thread = threading.Thread(
-            target=run_ping, args=(ns, args.server_ip, influx, args.ue, stop_evt),
+            target=run_ping, args=(ns, args.server_ip, metrics, args.ue, stop_evt),
             daemon=True)
         ping_thread.start()
 
@@ -246,7 +331,7 @@ def main():
     signal.signal(signal.SIGINT, handle_sig)
     signal.signal(signal.SIGTERM, handle_sig)
 
-    rc = run_iperf(argv, ns, influx, base_tags, args.parallel)
+    rc = run_iperf(argv, ns, metrics, base_tags, args.parallel)
     stop_evt.set()
     if ping_thread:
         ping_thread.join(timeout=2)
