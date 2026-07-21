@@ -24,6 +24,7 @@ docker logs open5gs_5gc 2>&1 | grep -i "subscriber\|SUBSCRIBER_DB"
 
 UE #1 is boot-provisioned (see `open5gs/open5gs.env`). For more UEs:
 ```bash
+./scripts/add_user.sh 001010000000001
 ./scripts/add_user.sh 001010000000002
 ```
 
@@ -76,17 +77,13 @@ Start InfluxDB first (the xApp pushes KPM into measurement `kpm`, bucket `srsran
 ```bash
 ./scripts/manage.sh start monitoring     # or: up -d influxdb
 cd ric
-docker compose exec python_xapp_runner ./kpm_mon_xapp.py \
-  --e2_node_id gnbd_001_001_000001_0 --kpm_report_style 1 \
-  --metrics DRB.UEThpDl,DRB.UEThpUl
+docker compose exec python_xapp_runner ./kpm_mon_xapp.py --e2_node_id gnbd_001_001_000001_0 --kpm_report_style 1 --metrics DRB.UEThpDl,DRB.UEThpUl
 ```
 **Gate A (subscription):** the xApp prints
 `Successfully subscribed ... -> 1` and submgr returns `200`.
 **Gate B (indications):** KPM rows land in InfluxDB:
 ```bash
-docker exec influxdb sh -c "curl -s -G 'http://localhost:8081/api/v3/query_sql' \
-  --data-urlencode 'db=srsran' \
-  --data-urlencode 'q=SELECT * FROM kpm ORDER BY time DESC LIMIT 5'"
+docker exec influxdb sh -c "curl -s -G 'http://localhost:8081/api/v3/query_sql' --data-urlencode 'db=srsran' --data-urlencode 'q=SELECT * FROM kpm ORDER BY time DESC LIMIT 5'"
 # -> {"DRB_UEThpDl":..,"DRB_UEThpUl":..,"e2_node_id":"gnbd_001_001_000001_0",...}
 ```
 
@@ -105,14 +102,11 @@ docker exec influxdb sh -c "curl -s -G 'http://localhost:8081/api/v3/query_sql' 
 ## 7. Traffic + telemetry
 ```bash
 docker exec -d open5gs_5gc iperf3 -s -p 5201
-docker exec multi_ue /srsran/config/run_scenario.sh \
-  --video-client --bitrate 1M --server-ip 10.45.0.1 --port 5201 --ue 1 --duration 20
+docker exec multi_ue /srsran/config/run_scenario.sh --video-client --bitrate 1M --server-ip 10.45.0.1 --port 5201 --ue 1 --duration 20
 ```
 **Gate:** per-UE samples land in InfluxDB:
 ```bash
-docker exec influxdb sh -c "curl -s -G 'http://localhost:8081/api/v3/query_sql' \
-  --data-urlencode 'db=srsran' \
-  --data-urlencode 'q=SELECT ue_id, count(*) AS n FROM ue_traffic GROUP BY ue_id'"
+docker exec influxdb sh -c "curl -s -G 'http://localhost:8081/api/v3/query_sql' --data-urlencode 'db=srsran' --data-urlencode 'q=SELECT ue_id, count(*) AS n FROM ue_traffic GROUP BY ue_id'"
 ```
 View the **Multi-UE Traffic** dashboard in Grafana (http://localhost:3300).
 

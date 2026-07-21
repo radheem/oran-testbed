@@ -1,6 +1,8 @@
 services:
   multi_ue:
-    image: ghcr.io/sulaimanalmani/srsranzmq/srsue:v1.1
+    image: cudu/multi_ue:local
+    build:
+      context: .
     container_name: multi_ue
     privileged: true
     networks:
@@ -21,7 +23,11 @@ services:
     env_file:
       - .env
     environment:
-      # InfluxDB export target (matches srsRAN docker .env).
+      # Kafka-first metric export; ue_export.py falls back to InfluxDB if Kafka
+      # is unavailable so local runs keep working.
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:9092
+      - KAFKA_TOPIC=xapp-metrics
+      - XAPP_NAME=multi_ue
       - INFLUX_URL=http://influxdb:8081
       - INFLUX_BUCKET=srsran
     # Start the bridge + NUM_UES srsUE instances. Set DEBUG_MODE=true to keep
